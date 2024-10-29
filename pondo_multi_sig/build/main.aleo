@@ -23,12 +23,12 @@ struct transfer_operation:
     token_id as field;
     recipient as address;
     amount as u128;
-    program_id as address;
 
 struct admin_operation:
     arg as field;
     op_type as u8;
     request_id as u64;
+    program_id as address;
 
 
 mapping admin_operations:
@@ -76,9 +76,9 @@ function transfer:
     input r8 as address.public;
     input r9 as u64.public;
     call token_registry.aleo/transfer_public r0 r1 r2 into r10;
-    cast r0 r1 r2 pondo_multi_sig.aleo into r11 as transfer_operation;
+    cast r0 r1 r2 into r11 as transfer_operation;
     hash.bhp256 r11 into r12 as field;
-    cast r12 0u8 r9 into r13 as admin_operation;
+    cast r12 0u8 r9 pondo_multi_sig.aleo into r13 as admin_operation;
     hash.bhp256 r13 into r14 as field;
     sign.verify r3 r4 r14 into r15;
     sign.verify r5 r6 r14 into r16;
@@ -122,9 +122,9 @@ function update_admin:
     input r6 as signature.public;
     input r7 as address.public;
     input r8 as u64.public;
-    cast  r0 r1 pondo_multi_sig.aleo into r9 as [address; 3u32];
+    cast  r0 r1 into r9 as [address; 2u32];
     hash.bhp256 r9 into r10 as field;
-    cast r10 1u8 r8 into r11 as admin_operation;
+    cast r10 1u8 r8 pondo_multi_sig.aleo into r11 as admin_operation;
     hash.bhp256 r11 into r12 as field;
     sign.verify r2 r3 r12 into r13;
     sign.verify r4 r5 r12 into r14;
@@ -154,6 +154,11 @@ finalize update_admin:
     contains admin_operations[r5.request_id] into r11;
     assert.eq r11 false;
     set r5 into admin_operations[r5.request_id];
+    contains admins[r0] into r12;
+    assert.eq r12 true;
     remove admins[r0];
+    contains admins[r1] into r13;
+    not r13 into r14;
+    assert.eq r14 true;
     set true into admins[r1];
 

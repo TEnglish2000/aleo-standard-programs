@@ -10,16 +10,16 @@ program pondo_multi_sig.aleo {
     const ADMIN_4: address = aleo1q59hxe2zmexlu4vgtmtmvyxm4ew047zlf50h5l5zsrdvljusdvrqn78u7s;
     
     struct transfer_operation {
-        token_id: field,
-        recipient: address,
-        amount: u128,
-        program_id: address
+      token_id: field,
+      recipient: address,
+      amount: u128
     }
 
     struct admin_operation {
       arg: field,
       op_type: u8,
-      request_id: u64
+      request_id: u64,
+      program_id: address
     }
 
     // The admin operation types
@@ -33,7 +33,7 @@ program pondo_multi_sig.aleo {
 
     // Initialize the contract with predefined admins
     async transition initialize() -> Future {
-        return finalize_initialize();
+      return finalize_initialize();
     }
 
     async function finalize_initialize() {
@@ -52,16 +52,16 @@ program pondo_multi_sig.aleo {
 
     // Transfer method with multisig approval logic
     async transition transfer(
-        public token_id: field,
-        public recipient: address,
-        public amount: u128,
-        public sig_1: signature,
-        public admin_1: address,
-        public sig_2: signature,
-        public admin_2: address,
-        public sig_3: signature,
-        public admin_3: address,
-        public request_id: u64
+      public token_id: field,
+      public recipient: address,
+      public amount: u128,
+      public sig_1: signature,
+      public admin_1: address,
+      public sig_2: signature,
+      public admin_2: address,
+      public sig_3: signature,
+      public admin_3: address,
+      public request_id: u64
     ) -> Future {
       // Transfer the tokens
       let transfer_future: Future = token_registry.aleo/transfer_public(token_id, recipient, amount);
@@ -69,14 +69,14 @@ program pondo_multi_sig.aleo {
       let transfer_op: transfer_operation = transfer_operation {
         token_id: token_id,
         recipient: recipient,
-        amount: amount,
-        program_id: self.address
+        amount: amount
       };
       let transfer_hash: field = BHP256::hash_to_field(transfer_op);
       let admin_op: admin_operation = admin_operation {
         arg: transfer_hash,
         op_type: TRANSFER_OPERATION,
-        request_id: request_id
+        request_id: request_id,
+        program_id: self.address
       };
       let op_hash: field = BHP256::hash_to_field(admin_op);
 
@@ -95,30 +95,30 @@ program pondo_multi_sig.aleo {
   }
 
     async function finalize_transfer(
-        public transfer_future: Future,
-        public admin_1: address,
-        public admin_2: address,
-        public admin_3: address,
-        public admin_op: admin_operation,
+      public transfer_future: Future,
+      public admin_1: address,
+      public admin_2: address,
+      public admin_3: address,
+      public admin_op: admin_operation,
     ) {
-        transfer_future.await();
+      transfer_future.await();
 
-        /* Start Verify Transfer Operation */
+      /* Start Verify Transfer Operation */
 
-        // Ensure each admin is registered
-        let is_admin_1: bool = admins.get(admin_1);
-        let is_admin_2: bool = admins.get(admin_2);
-        let is_admin_3: bool = admins.get(admin_3);
-        assert(is_admin_1 && is_admin_2 && is_admin_3);
+      // Ensure each admin is registered
+      let is_admin_1: bool = admins.get(admin_1);
+      let is_admin_2: bool = admins.get(admin_2);
+      let is_admin_3: bool = admins.get(admin_3);
+      assert(is_admin_1 && is_admin_2 && is_admin_3);
 
-        // Ensure the request hasn't been executed before
-        let request_exists: bool = admin_operations.contains(admin_op.request_id);
-        assert_eq(request_exists, false);
+      // Ensure the request hasn't been executed before
+      let request_exists: bool = admin_operations.contains(admin_op.request_id);
+      assert_eq(request_exists, false);
 
-        // Store the transfer operation
-        admin_operations.set(admin_op.request_id, admin_op);
+      // Store the transfer operation
+      admin_operations.set(admin_op.request_id, admin_op);
 
-        /* End Verify Transfer Operation */
+      /* End Verify Transfer Operation */
     }
 
     // Used for the multi-sig to update an admin addresses
@@ -133,12 +133,13 @@ program pondo_multi_sig.aleo {
     public admin_3: address,
     public request_id: u64
   ) -> Future {
-    let args: [address; 3] = [old_admin, new_admin, self.address];
+    let args: [address; 2] = [old_admin, new_admin];
     let arg: field = BHP256::hash_to_field(args);
     let admin_op: admin_operation = admin_operation {
       arg: arg,
       op_type: UPDATE_ADMIN_OPERATION,
-      request_id: request_id
+      request_id: request_id,
+      program_id: self.address
     };
     let op_hash: field = BHP256::hash_to_field(admin_op);
     let is_verified_1: bool = sig_1.verify(admin_1, op_hash);
@@ -179,8 +180,15 @@ program pondo_multi_sig.aleo {
 
     /* End Verify Admin Operation */
 
+    let is_removing_admin: bool = admins.contains(old_admin);
+    assert(is_removing_admin);
+
     // Remove the old admin
     admins.remove(old_admin);
+
+    // Ensure new admin is not already an admin
+    let is_existing_admin: bool = admins.contains(new_admin);
+    assert(!is_existing_admin);
 
     // Set the new admin
     admins.set(new_admin, true);
