@@ -1,0 +1,18 @@
+{
+  "program": "pondo_multi_sig.aleo",
+  "version": "0.1.0",
+  "description": "",
+  "license": "MIT",
+  "dependencies": [
+      {
+          "name": "credits.aleo",
+          "location": "network",
+          "network": "testnet"
+      },
+      {
+          "name": "token_registry.aleo",
+          "location": "local",
+          "path": "../token_registry"
+      }
+  ]
+}
