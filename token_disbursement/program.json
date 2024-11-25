@@ -1,0 +1,28 @@
+{
+  "program": "token_disbursement.aleo",
+  "version": "0.1.0",
+  "description": "",
+  "license": "MIT",
+  "dependencies": [
+    {
+        "name": "credits.aleo",
+        "location": "network",
+        "network": "testnet"
+    },
+    {
+        "name": "token_registry.aleo",
+        "location": "local",
+        "path": "../token_registry"
+    },
+    {
+        "name": "pondo_protocol.aleo",
+        "location": "local",
+        "path": "../pondo/pondo_protocol"
+    },
+    {
+      "name": "time_oracle.aleo",
+      "location": "local",
+      "path": "../time_oracle"
+    }
+  ]
+}
