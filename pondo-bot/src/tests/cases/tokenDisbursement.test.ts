@@ -741,7 +741,7 @@ describe('Token Disbursement and Time Oracle', async () => {
       assert(cancelAccepted, `Cancel was rejected, but should have been accepted`);
 
       const balanceAfter = await getMTSPBalance(adminAddress, PALEO_TOKEN_ID, true);
-      const expectedBalance = balanceBefore - tokenAmount2;
+      const expectedBalance = balanceBefore + tokenAmount2;
       assert(balanceAfter == expectedBalance, `Admin balance should be ${expectedBalance} but is ${balanceAfter}`);
     });
   });
