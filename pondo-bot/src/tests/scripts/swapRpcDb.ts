@@ -22,6 +22,9 @@ async function swapRpcDb(backupFileName: string) {
     await execPromise(
       `cd ${RPC_PATH} && BACKUP_DIR=${RPC_BACKUPS_PATH} BACKUP_FILE=${backupFileName}.sql yarn local-db-restore`
     );
+    await execPromise(
+      `cd ${RPC_PATH} && yarn migrate`
+    );
     console.log("RPC DB restored successfully.");
   } catch (err) {
     console.error(`Error restoring rpc: ${err}`);

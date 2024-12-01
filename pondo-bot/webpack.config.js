@@ -160,6 +160,8 @@ const testConfig = {
       path.resolve(__dirname, 'src') + '/tests/cases/pondoToken.test.ts',
     grantDisbursementTest:
       path.resolve(__dirname, 'src') + '/tests/cases/grantDisbursement.test.ts',
+    tokenDisbursementTest:
+      path.resolve(__dirname, 'src') + '/tests/cases/tokenDisbursement.test.ts',
     calculateGDPWithdraw:
       path.resolve(__dirname, 'src') + '/tests/scripts/calculateGDPWithdraw.ts',
     snapshotRpcDb:

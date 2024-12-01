@@ -250,7 +250,8 @@ export type GeneratedTransactionResponse = {
 };
 
 export const getDelegatedTransaction = async (
-  requestId: string
+  requestId: string,
+  retries = 3
 ): Promise<GeneratedTransactionResponse> => {
   const client = getClient();
   try {
@@ -258,7 +259,12 @@ export const getDelegatedTransaction = async (
       request_id: requestId
     })) as GeneratedTransactionResponse;
     return transaction;
-  } catch {
+  } catch (e: any) {
+    if (retries > 0) {
+      await delay(1_000);
+      return await getDelegatedTransaction(requestId, retries - 1);
+    }
+    console.log(`Error fetching delegated transaction: ${e}`);
     throw new Error('Transaction not found');
   }
 };
@@ -271,7 +277,8 @@ type GeneratedDeploymentResponse = {
 };
 
 export const getDelegatedDeployment = async (
-  requestId: string
+  requestId: string,
+  retries = 3,
 ): Promise<GeneratedDeploymentResponse> => {
   const client = getClient();
   try {
@@ -279,7 +286,12 @@ export const getDelegatedDeployment = async (
       request_id: requestId
     })) as GeneratedDeploymentResponse;
     return deployment;
-  } catch {
+  } catch (e: any) {
+    if (retries > 0) {
+      await delay(1_000);
+      return await getDelegatedDeployment(requestId, retries - 1);
+    }
+    console.log(`Error fetching delegated deployment: ${e}`);
     throw new Error('Transaction not found');
   }
 };

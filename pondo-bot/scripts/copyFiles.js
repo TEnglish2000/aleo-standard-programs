@@ -21,6 +21,7 @@ const filesToCopy = [
   '../pondo/delegators/delegator5/build/main.aleo',
   '../time_oracle/build/main.aleo',
   '../grant_disbursement/build/main.aleo',
+  '../token_disbursement/build/main.aleo',
   '../pondo/test_program/build/main.aleo',
 ];
 

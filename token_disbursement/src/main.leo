@@ -1,208 +1,197 @@
+import pondo_protocol.aleo;
+import time_oracle.aleo;
 import token_registry.aleo;
 
 // The 'pondo_multi_sig' program.
 program token_disbursement.aleo {
-    // Admins responsible for approving transfers
-    const ADMIN_0: address = aleo12shtwnmf49t5atmad2jnk3e58ahtp749d9trctt9z3wryxyzt5pspp0nd0;
-    const ADMIN_1: address = aleo1z9y9afh0h6dnyj3f0hvjc4mhayjy06fj42ppcq0rvpmmyky6fuzs449sjr;
-    const ADMIN_2: address = aleo19x0ctad8llm9y0qssw7eup045c5wxxp6k4al3n0d5r8maulkzu8sh3jwew;
-    const ADMIN_3: address = aleo16ycrg9g4208lp5y4g5s3gn43xknc5gdsr7wjrpqq9htznj5qk5yqd6px5a;
-    const ADMIN_4: address = aleo1q59hxe2zmexlu4vgtmtmvyxm4ew047zlf50h5l5zsrdvljusdvrqn78u7s;
+    // The cold address for funds to be returned to in the event of a cancel
+    const ADMIN_COLD_KEY: address = aleo12shtwnmf49t5atmad2jnk3e58ahtp749d9trctt9z3wryxyzt5pspp0nd0;
+    // The unlock timestamp for all of the distributions, 9/4/2025
+    const UNLOCK_TIMESTAMP: u64 = 1_757_015_686u64;
+    // Minimum cancel block height, approximately 2 years after genesis
+    const MIN_CANCEL_HEIGHT: u32 = 22_500_000u32;
 
-    const UNLOCK_TIMESTAMP: u64 = 0u64;
-
-    struct Grant {
-      credits_amount: u64, // The amount of Aleo credits to be distributed
+    struct Claim {
+      credits_amount: u128, // The amount of Aleo credits to be distributed
       paleo_amount: u128, // The amount of paleo to be distributed
-      recipient_rewards_key: address, // The address that can withdraw the rewards
-      recipient_principal_key: address, // The address that can withdraw the principal
-      start_timestamp: u64, // The timestamp at which the grant was created
-      cliff_timestamp: u64, // The timestamp at which the recipient can start withdrawing principal
-      fully_vested_timestamp: u64 // The timestamp at which the recipient can withdraw the full principal
-    }
-    
-    struct cancel_operation {
-      token_id: field,
-      grant_id: u64,
-      amount: u128
+      recipient: address, // The recipient of the claim
     }
 
-    struct admin_operation {
-      arg: field,
-      op_type: u8,
-      request_id: u64,
-      program_id: address
-    }
+    // Mapping to store the claims
+    mapping claims: u64 => Claim;
 
-    // The admin operation types
-    const CANCEL_OPERATION: u8 = 0u8;
-    const UPDATE_ADMIN_OPERATION: u8 = 1u8;
-
-    // Mapping to store executed admin operations by request ID
-    mapping admin_operations: u64 => admin_operation;
-    mapping admins: address => bool;
-    mapping initialized: u8 => bool;
-
-    // Initialize the contract with predefined admins
-    async transition initialize() -> Future {
-      return finalize_initialize();
-    }
-
-    async function finalize_initialize() {
-      // Ensure the contract isn't already initialized
-      let is_initialized: bool = initialized.contains(0u8);
-      assert(!is_initialized);
-      initialized.set(0u8, true);
-
-      // Set the initial admins
-      admins.set(ADMIN_0, true);
-      admins.set(ADMIN_1, true);
-      admins.set(ADMIN_2, true);
-      admins.set(ADMIN_3, true);
-      admins.set(ADMIN_4, true);
-    }
-
-    // Transfer method with multisig approval logic
-    async transition transfer(
-      public token_id: field,
-      public grant_id: u64,
-      public amount: u128,
-      public sig_1: signature,
-      public admin_1: address,
-      public sig_2: signature,
-      public admin_2: address,
-      public sig_3: signature,
-      public admin_3: address,
-      public request_id: u64
+    /**
+     * Create a new claim
+     * @param claim_id The ID of the claim, must be unique
+     * @param paleo_amount The amount of Aleo credits to be distributed
+     * @param recipient The recipient of the claim
+     * Note: The credits amount is the same as the paleo amount even though pAleo > Aleo
+     * This means that some rewards are immediately withdrawable = (pAleo/Aleo - 1) * paleo_amount
+     */
+    async transition create(
+      public claim_id: u64,
+      public paleo_amount: u128,
+      public recipient: address
     ) -> Future {
-      // Transfer the tokens
-      let transfer_future: Future = token_registry.aleo/transfer_public(token_id, recipient, amount);
-
-      let cancel_op: cancel_operation = cancel_operation {
-        token_id: token_id,
-        recipient: recipient,
-        amount: amount
-      };
-      let cancel_hash: field = BHP256::hash_to_field(cancel_op);
-      let admin_op: admin_operation = admin_operation {
-        arg: cancel_hash,
-        op_type: CANCEL_OPERATION,
-        request_id: request_id,
-        program_id: self.address
-      };
-      let op_hash: field = BHP256::hash_to_field(admin_op);
-
-      // Verify all three signatures
-      let is_verified_1: bool = sig_1.verify(admin_1, op_hash);
-      let is_verified_2: bool = sig_2.verify(admin_2, op_hash);
-      let is_verified_3: bool = sig_3.verify(admin_3, op_hash);
-      assert(is_verified_1 && is_verified_2 && is_verified_3);
-
-      // Ensure the admin addresses are not the same
-      assert_neq(admin_1, admin_2);
-      assert_neq(admin_1, admin_3);
-      assert_neq(admin_2, admin_3);
-
-      return finalize_transfer(transfer_future, admin_1, admin_2, admin_3, admin_op);
-  }
-
-    async function finalize_transfer(
-      public transfer_future: Future,
-      public admin_1: address,
-      public admin_2: address,
-      public admin_3: address,
-      public admin_op: admin_operation,
-    ) {
-      transfer_future.await();
-
-      /* Start Verify Transfer Operation */
-
-      // Ensure each admin is registered
-      let is_admin_1: bool = admins.get(admin_1);
-      let is_admin_2: bool = admins.get(admin_2);
-      let is_admin_3: bool = admins.get(admin_3);
-      assert(is_admin_1 && is_admin_2 && is_admin_3);
-
-      // Ensure the request hasn't been executed before
-      let request_exists: bool = admin_operations.contains(admin_op.request_id);
-      assert_eq(request_exists, false);
-
-      // Store the transfer operation
-      admin_operations.set(admin_op.request_id, admin_op);
-
-      /* End Verify Transfer Operation */
+      // Transfer the pAleo to the recipient
+      let f0: Future = token_registry.aleo/transfer_public_as_signer(PALEO_TOKEN_ID, self.address, paleo_amount);
+      // Finalize the creation
+      return finalize_create(f0, claim_id, paleo_amount, recipient);
     }
 
-    // Used for the multi-sig to update an admin addresses
-  async transition update_admin(
-    public old_admin: address,
-    public new_admin: address,
-    public sig_1: signature,
-    public admin_1: address,
-    public sig_2: signature,
-    public admin_2: address,
-    public sig_3: signature,
-    public admin_3: address,
-    public request_id: u64
-  ) -> Future {
-    let args: [address; 2] = [old_admin, new_admin];
-    let arg: field = BHP256::hash_to_field(args);
-    let admin_op: admin_operation = admin_operation {
-      arg: arg,
-      op_type: UPDATE_ADMIN_OPERATION,
-      request_id: request_id,
-      program_id: self.address
-    };
-    let op_hash: field = BHP256::hash_to_field(admin_op);
-    let is_verified_1: bool = sig_1.verify(admin_1, op_hash);
-    let is_verified_2: bool = sig_2.verify(admin_2, op_hash);
-    let is_verified_3: bool = sig_3.verify(admin_3, op_hash);
-    assert(is_verified_1 && is_verified_2 && is_verified_3);
+    async function finalize_create(
+      f0: Future,
+      public claim_id: u64,
+      public paleo_amount: u128,
+      public recipient: address
+    ) {
+      f0.await();
 
-    // Ensure the admin addresses are not the same
-    assert_neq(admin_1, admin_2);
-    assert_neq(admin_1, admin_3);
-    assert_neq(admin_2, admin_3);
+      // Ensure the claim does not already exist
+      let claim_exists: bool = claims.contains(claim_id);
+      assert(!claim_exists);
 
-    return finalize_update_admin(old_admin, new_admin, admin_1, admin_2, admin_3, admin_op);
-  }
+      // Create the claim with credits amount set to the paleo amount
+      let claim: Claim = Claim {
+        credits_amount: paleo_amount,
+        paleo_amount: paleo_amount,
+        recipient: recipient
+      };
+      claims.set(claim_id, claim);
+    }
 
-  async function finalize_update_admin(
-    public old_admin: address,
-    public new_admin: address,
-    public admin_1: address,
-    public admin_2: address,
-    public admin_3: address,
-    public admin_op: admin_operation
-  ) {
-    /* Start Verify Admin Operation */
+    async transition withdraw_rewards(
+      public claim_id: u64,
+      public paleo_amount: u128
+    ) -> Future {
+      let f0: Future = token_registry.aleo/transfer_public(PALEO_TOKEN_ID, self.caller, paleo_amount);
+      return finalize_withdraw_rewards(f0, claim_id, paleo_amount, self.caller);
+    }
 
-    // Ensure the admin addresses are each admins
-    let is_admin_1: bool = admins.get(admin_1);
-    let is_admin_2: bool = admins.get(admin_2);
-    let is_admin_3: bool = admins.get(admin_3);
-    assert(is_admin_1 && is_admin_2 && is_admin_3);
+    async function finalize_withdraw_rewards(
+      public f0: Future,
+      public claim_id: u64,
+      public paleo_amount: u128,
+      public caller: address
+    ) {
+      // Await the transfer completing
+      f0.await();
 
-    // Ensure the request hasn't been made before
-    let request_exists: bool = admin_operations.contains(admin_op.request_id);
-    assert_eq(request_exists, false);
+      // Get the claim
+      let claim: Claim = claims.get(claim_id);
 
-    // Set the admin operation
-    admin_operations.set(admin_op.request_id, admin_op);
+      // Ensure the caller is the recipient
+      assert_eq(caller, claim.recipient);
 
-    /* End Verify Admin Operation */
+      // Get the current timestamp
+      let current_timestamp: u64 = time_oracle.aleo/timestamp.get(0u8);
+      // Assert that the current timestamp is before the cliff
+      assert(current_timestamp < UNLOCK_TIMESTAMP);
 
-    let is_removing_admin: bool = admins.contains(old_admin);
-    assert(is_removing_admin);
+      // Subtract the amount from the claim
+      let remaining_paleo: u128 = claim.paleo_amount - paleo_amount;
 
-    // Remove the old admin
-    admins.remove(old_admin);
+      // Assert Pondo not in rebalancing state
+      let current_state: u8 = pondo_protocol.aleo/protocol_state.get(PROTOCOL_STATE_KEY);
+      assert(current_state != REBALANCING_STATE);
 
-    // Ensure new admin is not already an admin
-    let is_existing_admin: bool = admins.contains(new_admin);
-    assert(!is_existing_admin);
+      // Ensure the number of credits in the principal remains above the initial deposit
+      // Note: the paleo pool and the credits pool are always an underestimate (assuming no slashing) as it does not include rewards & owed commissions
+      // We use this underestimate because it as significantly reduces gas costs and should be close to the actual amount
+      // As it is an underestimate, the downside is it will slightly reduce the amount of paleo that can be withdrawn
+      let minted_paleo: u128 = token_registry.aleo/registered_tokens.get(PALEO_TOKEN_ID).supply;
+      let paleo_commission: u64 = pondo_protocol.aleo/owed_commission.get(0u8);
+      let total_paleo_pool: u128 = minted_paleo + paleo_commission as u128;
+      let delegated_credits: u64 = pondo_protocol.aleo/balances.get(DELEGATED_BALANCE);
+      let core_protocol_account: u64 = credits.aleo/account.get_or_use(pondo_protocol.aleo, 0u64);
+      let reserved_for_withdrawal: u64 = pondo_protocol.aleo/balances.get(CLAIMABLE_WITHDRAWALS);
+      let total_credits_pool: u64 = delegated_credits + core_protocol_account - reserved_for_withdrawal;
 
-    // Set the new admin
-    admins.set(new_admin, true);
-  }
+      let claim_credits_balance: u128 = total_credits_pool as u128 * remaining_paleo / total_paleo_pool;
+      assert(claim_credits_balance >= claim.credits_amount as u128);
+
+      // Update the claim
+      let updated_claim: Claim = Claim {
+        credits_amount: claim.credits_amount,
+        paleo_amount: remaining_paleo,
+        recipient: claim.recipient,
+      };
+      claims.set(claim_id, updated_claim);
+    }
+
+    async transition withdraw_principal(
+      public claim_id: u64,
+      public paleo_amount: u128
+    ) -> Future {
+      let f0: Future = token_registry.aleo/transfer_public(PALEO_TOKEN_ID, self.caller, paleo_amount);
+      return finalize_withdraw_principal(f0, claim_id, paleo_amount, self.caller);
+    }
+
+    async function finalize_withdraw_principal(
+      public f0: Future,
+      public claim_id: u64,
+      public paleo_amount: u128,
+      public caller: address
+    ) {
+      // Await the transfer completing
+      f0.await();
+
+      // Get the claim
+      let claim: Claim = claims.get(claim_id);
+
+      // Ensure the caller is the recipient
+      assert_eq(caller, claim.recipient);
+
+      // Get the current timestamp
+      let current_timestamp: u64 = time_oracle.aleo/timestamp.get(0u8);
+      // Assert that the current timestamp is after the cliff
+      assert(current_timestamp >= UNLOCK_TIMESTAMP);
+
+      // Subtract the amount from the claim
+      let remaining_paleo: u128 = claim.paleo_amount - paleo_amount;
+
+      // Update the claim
+      let updated_claim: Claim = Claim {
+        credits_amount: claim.credits_amount,
+        paleo_amount: remaining_paleo,
+        recipient: claim.recipient,
+      };
+      claims.set(claim_id, updated_claim);
+    }
+
+    async transition cancel(
+      public claim_id: u64,
+      public paleo_amount: u128
+    ) -> Future {
+      let f0: Future = token_registry.aleo/transfer_public(PALEO_TOKEN_ID, ADMIN_COLD_KEY, paleo_amount);
+      return finalize_cancel(f0, claim_id, paleo_amount);
+    }
+
+    async function finalize_cancel(
+      public f0: Future,
+      public claim_id: u64,
+      public paleo_amount: u128
+    ) {
+      // Await the transfer completing
+      f0.await();
+
+      // Assert that the current timestamp is after the minimum cancel height
+      assert(block.height > MIN_CANCEL_HEIGHT);
+
+      // Get the claim
+      let claim: Claim = claims.get(claim_id);
+      // Assert that the transfer amount is the remaining pAleo
+      assert_eq(claim.paleo_amount, paleo_amount);
+
+      // Remove the claim
+      claims.remove(claim_id);
+    }
+
+    // Copied from pondo_protocol_token.aleo
+    const PALEO_TOKEN_ID: field = 1751493913335802797273486270793650302076377624243810059080883537084141842600field;
+    // Copied from pondo_protocol.aleo
+    const PROTOCOL_STATE_KEY: u8 = 0u8;
+    const REBALANCING_STATE: u8 = 2u8;
+    const DELEGATED_BALANCE: u8 = 0u8;
+    const CLAIMABLE_WITHDRAWALS: u8 = 2u8;
 }
